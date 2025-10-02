@@ -1,5 +1,6 @@
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
+require('dotenv').config();
 
 // Google Sheets setup
 async function getSheet() {
