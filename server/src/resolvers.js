@@ -1,117 +1,219 @@
-const { getAllTransactions, addTransaction, updateTransaction, deleteTransaction, calculateDashboardData, getUserCategories } = require('../services/transactions');
-const { getCached, setCache } = require('../services/cache');
-
+const { GraphQLError } = require('graphql');
+const {
+  AddTransactionInput,
+  UpdateTransactionInput,
+  DeleteTransactionInput,
+} = require('../services/validation');
 
 const resolvers = {
   Query: {
-    transactions: async () => {
-      return await getAllTransactions();
+    transactions: async (_, { limit = 50, offset = 0 }, { supabase }) => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*, categories(name, icon, color)')
+        .order('date', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (error) throw new GraphQLError(error.message);
+
+      return data.map(formatTransaction);
     },
 
-    dashboard: async () => {
-      let dashboardData = getCached('dashboard_data');
-      if (!dashboardData) {
-        const transactions = await getAllTransactions();
-        dashboardData = calculateDashboardData(transactions);
-        setCache('dashboard_data', dashboardData);
+    dashboard: async (_, __, { supabase }) => {
+      const { data, error } = await supabase.rpc('get_dashboard_data');
+
+      if (error) throw new GraphQLError(error.message);
+
+      // Format recentTransactions to match Transaction type
+      if (data.recentTransactions) {
+        data.recentTransactions = data.recentTransactions.map((t) => ({
+          id: t.id,
+          amount: t.amount,
+          type: t.type,
+          description: t.description,
+          date: t.date,
+          category: t.category,
+          categoryIcon: t.icon,
+          categoryColor: t.color,
+        }));
       }
-      return dashboardData;
+
+      return data;
     },
 
-    transactionsByCategory: async (_, { category }) => {
-      const transactions = await getAllTransactions();
-      return transactions.filter(t => t.category === category);
+    transactionsByCategory: async (_, { category }, { supabase }) => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*, categories(name, icon, color)')
+        .eq('categories.name', category)
+        .order('date', { ascending: false });
+
+      if (error) throw new GraphQLError(error.message);
+
+      return data.map(formatTransaction);
     },
 
-    getUserCategories: async () => {
-      return await getUserCategories();
-    }
-    // getCategorySpending: async (_, { userID, startDate, endDate  }, { pool }) => {
-    //   //const query = `SELECT category_id, SUM(amount) as total FROM transactions WHERE user_id = $1 GROUP BY category_id`;
-    //   const query = `select sum(t.amount) as total, c.name as category_name from transactions t join categories c on t.category_id = c.id where t.user_id = $1 and t.type = 'expense' and t.date between $2 and $3 group by c.name`
-    //   try {
-    //     const { rows } = await pool.query(query, [userID, startDate, endDate ]);
-    //     return rows;
-    //   } catch (err) {
-    //     console.error('DB query error:', err);
-    //     throw new Error('Failed to fetch transactions');
-    //   }
-    // },
+    searchTransactions: async (_, { query }, { supabase }) => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*, categories(name, icon, color)')
+        .ilike('description', `%${query}%`)
+        .order('date', { ascending: false })
+        .limit(50);
 
-    // getCategoryIncome: async (_, { userID, startDate, endDate  }, { pool }) => {
-    //   //const query = `SELECT category_id, SUM(amount) as total FROM transactions WHERE user_id = $1 GROUP BY category_id`;
-    //   const query = `select sum(t.amount) as total, c.name as category_name from transactions t join categories c on t.category_id = c.id where t.user_id = $1 and t.type = 'income' and t.date between $2 and $3 group by c.name`
-    //   try {
-    //     const { rows } = await pool.query(query, [userID, startDate, endDate ]);
-    //     return rows;
-    //   } catch (err) {
-    //     console.error('DB query error:', err);
-    //     throw new Error('Failed to fetch transactions');
-    //   }
-    // },
+      if (error) throw new GraphQLError(error.message);
 
-    // getTotalAmountAcrossTypes: async (_, {userID, startDate, endDate}, {pool}) => {
-    //   const query = `select type, sum(amount) as total from transactions where user_id = $1 and date between $2 and $3 group by type`;
-    //   try {
-    //     const { rows } = await pool.query(query, [userID, startDate, endDate]);
-    //     return rows;
-    //   } catch (err) {
-    //     console.error('DB query error:', err);
-    //     throw new Error('Failed to fetch transactions');
-    //   }
-    // },
+      return data.map(formatTransaction);
+    },
 
-    // getMonthsDataAcrossTypes: async (_, { userID, startDate, endDate }, { pool }) => {
-    //   const query = `select extract('MONTH' from date) as month, type, sum(amount) as total from transactions where user_id = $1 and date between $2 and $3 group by month, type`;
-    //   try {
-    //     const { rows } = await pool.query(query, [userID, startDate, endDate]);
-    //     return rows;
-    //   } catch (err) {
-    //     console.error('DB query error:', err);
-    //     throw new Error('Failed to fetch transactions');
-    //   }
-    // },
+    getUserCategories: async (_, __, { supabase }) => {
+      const { data, error } = await supabase.rpc('get_user_categories');
 
-    // getCategorySpendingComparison: async (_, { userID, startDate, endDate  }, { pool }) => {
-    //   const query = `select extract('MONTH' from t.date) as month, c.name as category_name, sum(t.amount) as total from transactions as t join categories as c on t.category_id = c.id  where t.user_id = $1 and t.type = 'expense' and t.date between $2 and $3 group by c.name, month`;
-    //   try {
-    //     const { rows } = await pool.query(query, [userID, startDate, endDate ]);
-    //     return rows;
-    //   } catch (err) {
-    //     console.error('DB query error:', err);
-    //     throw new Error('Failed to fetch transactions');
-    //   }
-    // },
+      if (error) throw new GraphQLError(error.message);
+
+      return data.map((c) => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        icon: c.icon,
+        color: c.color,
+        isSystem: c.is_system,
+        transactionCount: c.transaction_count,
+      }));
+    },
   },
 
   Mutation: {
-    addTransaction: async(_, transactionData) =>{
-      const transaction = await addTransaction(transactionData);
+    addTransaction: async (_, args, { supabase, userId }) => {
+      // Validate input
+      const validated = AddTransactionInput.parse({
+        amount: args.amount,
+        description: args.description,
+        category: args.category,
+        type: args.type,
+        date: args.date,
+      });
 
-      const transactions = await getAllTransactions();
-      const dashboardData = calculateDashboardData(transactions);
+      // Look up category by name, or create it
+      const categoryId = await resolveCategory(
+        supabase,
+        userId,
+        validated.category,
+        validated.type
+      );
 
-      return transaction;
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          amount: validated.amount,
+          type: validated.type,
+          description: validated.description,
+          category_id: categoryId,
+          date: validated.date || new Date().toISOString().split('T')[0],
+        })
+        .select('*, categories(name, icon, color)')
+        .single();
+
+      if (error) throw new GraphQLError(error.message);
+
+      return formatTransaction(data);
     },
 
-    updateTransaction: async(_, { id, amount, description, category, date, type }) => {
-      const transaction = await updateTransaction(id, { amount, description, category, date, type });
-      
-      const transactions = await getAllTransactions();
-      const dashboardData = calculateDashboardData(transactions);
+    updateTransaction: async (_, args, { supabase, userId }) => {
+      // Validate input
+      const validated = UpdateTransactionInput.parse(args);
 
-      return transaction;
-    },
-    deleteTransaction: async(_, { id }) => {
-      const success = await deleteTransaction(id);
-      if (!success) {
-        throw new Error('Failed to delete transaction');
+      const updates = {};
+      if (validated.amount !== undefined) updates.amount = validated.amount;
+      if (validated.type !== undefined) updates.type = validated.type;
+      if (validated.description !== undefined)
+        updates.description = validated.description;
+      if (validated.date !== undefined) updates.date = validated.date;
+
+      // If category name provided, resolve to category_id
+      if (validated.category !== undefined) {
+        updates.category_id = await resolveCategory(
+          supabase,
+          userId,
+          validated.category,
+          validated.type || 'EXPENSE'
+        );
       }
-      const transactions = await getAllTransactions();
-      const dashboardData = calculateDashboardData(transactions);
-      return success;
-    }
-  }
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .update(updates)
+        .eq('id', validated.id)
+        .select('*, categories(name, icon, color)')
+        .single();
+
+      if (error) throw new GraphQLError(error.message);
+
+      return formatTransaction(data);
+    },
+
+    deleteTransaction: async (_, args, { supabase }) => {
+      const validated = DeleteTransactionInput.parse(args);
+
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', validated.id);
+
+      if (error) throw new GraphQLError(error.message);
+
+      return true;
+    },
+  },
 };
+
+/**
+ * Formats a Supabase transaction row (with joined category) into the GraphQL Transaction type.
+ */
+function formatTransaction(row) {
+  return {
+    id: row.id,
+    amount: row.amount,
+    type: row.type,
+    description: row.description,
+    date: row.date,
+    category: row.categories?.name || 'Other',
+    categoryIcon: row.categories?.icon || null,
+    categoryColor: row.categories?.color || null,
+  };
+}
+
+/**
+ * Resolves a category name to its UUID.
+ * If the category doesn't exist for this user, creates it.
+ */
+async function resolveCategory(supabase, userId, categoryName, type) {
+  // Try to find existing category
+  const { data: existing } = await supabase
+    .from('categories')
+    .select('id')
+    .eq('user_id', userId)
+    .ilike('name', categoryName)
+    .limit(1)
+    .single();
+
+  if (existing) return existing.id;
+
+  // Create new category
+  const { data: created, error } = await supabase
+    .from('categories')
+    .insert({
+      user_id: userId,
+      name: categoryName,
+      type: type === 'INCOME' ? 'INCOME' : 'EXPENSE',
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new GraphQLError(`Failed to create category: ${error.message}`);
+
+  return created.id;
+}
 
 module.exports = resolvers;

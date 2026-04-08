@@ -1,96 +1,100 @@
-//to create schema for the graphql
 const gql = require('graphql-tag');
 
 const typeDefs = gql`
-    scalar Date
+  scalar Date
 
-    type Query {
-        "Get all Transactions for particular user"
-        transactions: [Transaction!]!
+  type Query {
+    "Get all transactions for the authenticated user"
+    transactions(limit: Int, offset: Int): [Transaction!]!
 
-        # Get dashboard data (main view)
-        dashboard: DashboardData!
+    "Get dashboard data (summary, charts, recent transactions)"
+    dashboard: DashboardData!
 
-        # Get transactions by category
-        transactionsByCategory(category: String!): [Transaction!]!
-        
-        # Search transactions
-        searchTransactions(query: String!): [Transaction!]!
-        
-        # Get all categories from existing transactions
-        getUserCategories: [Category!]!
-    }
+    "Get transactions filtered by category name"
+    transactionsByCategory(category: String!): [Transaction!]!
 
-    type Mutation {
-        # Add a new transaction
-        addTransaction(
-            amount: Float!
-            description: String!
-            category: String!
-            type: TransactionType!
-        ): Transaction!
+    "Search transactions by description"
+    searchTransactions(query: String!): [Transaction!]!
 
-        # Update an existing transaction
-        updateTransaction(
-            id: ID!,
-            amount: Float,
-            description: String,
-            category: String,
-            date: Date,
-            type: TransactionType
-        ): Transaction!
+    "Get all categories for the authenticated user"
+    getUserCategories: [Category!]!
+  }
 
-        # Delete a transaction
-        deleteTransaction(id: ID!): Boolean!
-    }
+  type Mutation {
+    "Add a new transaction"
+    addTransaction(
+      amount: Float!
+      description: String!
+      category: String!
+      type: TransactionType!
+      date: Date
+    ): Transaction!
 
-    
+    "Update an existing transaction"
+    updateTransaction(
+      id: ID!
+      amount: Float
+      description: String
+      category: String
+      date: Date
+      type: TransactionType
+    ): Transaction!
 
+    "Delete a transaction"
+    deleteTransaction(id: ID!): Boolean!
+  }
 
-    "A transaction for a user"
-    type Transaction {
-        id: ID!
-        category: String!
-        amount: Float!
-        type: TransactionType!
-        description: String
-        date: Date!
-    }
+  "A financial transaction"
+  type Transaction {
+    id: ID!
+    category: String!
+    amount: Float!
+    type: TransactionType!
+    description: String
+    date: Date!
+    categoryIcon: String
+    categoryColor: String
+  }
 
-    enum TransactionType {
-        INCOME
-        EXPENSE
-    }
+  enum TransactionType {
+    INCOME
+    EXPENSE
+  }
 
-    type CategorySummary {
-        category: String!
-        total: Float!
-        count: Int!
-        percentage: Float!
-    }
+  type CategorySummary {
+    category: String!
+    total: Float!
+    count: Int!
+    percentage: Float!
+    icon: String
+    color: String
+  }
 
-    type MonthlyStats {
-        month: String!
-        income: Float!
-        expenses: Float!
-        balance: Float!
-    }
+  type MonthlyStats {
+    month: String!
+    income: Float!
+    expenses: Float!
+    balance: Float!
+  }
 
-    type DashboardData {
-        totalBalance: Float!
-        monthlyIncome: Float!
-        monthlyExpenses: Float!
-        categorySummary: [CategorySummary!]!
-        monthlyStats: [MonthlyStats!]!
-        recentTransactions: [Transaction!]!
-    }
+  type DashboardData {
+    totalBalance: Float!
+    monthlyIncome: Float!
+    monthlyExpenses: Float!
+    categorySummary: [CategorySummary!]!
+    monthlyStats: [MonthlyStats!]!
+    recentTransactions: [Transaction!]!
+  }
 
-    type Category {
-        name: String!
-        type: TransactionType!
-        transactionCount: Int!
-    }
-    
-`
+  type Category {
+    id: ID!
+    name: String!
+    type: String!
+    icon: String
+    color: String
+    isSystem: Boolean!
+    transactionCount: Int!
+  }
+`;
 
 module.exports = typeDefs;
